@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>雲端家事日曆 V6.1</title>
+    <style>
+        :root {
+            --primary-color: #FF9F9F;
+            --primary-light: #FFF0F0;
+            --active-chore-bg: #E0F7FA;
+            --active-chore-text: #00ACC1;
+            --text-main: #6D5A50;
+            --text-light: #A89A93;
+            --container-bg: rgba(255, 255, 255, 0.95);
+            --container-radius: 24px;
+            --container-shadow: 0 8px 30px rgba(100, 80, 70, 0.08);
+            --grid-border-color: rgba(109, 90, 80, 0.15);
+            --delete-btn-color: #ff6b6b;
+        }
+
+        body {
+            font-family: "Nunito", "PingFang TC", "Heiti TC", sans-serif;
+            /* 背景維持全螢幕 */
+            background: 
+                radial-gradient(circle at 10% 20%, rgba(255, 220, 200, 0.6) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 240, 180, 0.5) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 250, 1) 0%, rgba(255, 245, 235, 1) 100%);
+            background-attachment: fixed;
+            margin: 0; padding: 0; color: var(--text-main);
+            min-height: 100vh; 
+            display: flex; 
+            justify-content: center; /* 讓內容在電腦上置中 */
+            align-items: flex-start;
+            overflow-y: scroll; /* 總是顯示捲軸防止跳動 */
+        }
+
+        /* === 新增：APP 寬度限制容器 === */
+        .app-root {
+            width: 100%;
+            max-width: 480px; /* 限制最大寬度，模擬手機尺寸 */
+            padding: 15px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-height: 100vh; /* 確保高度足夠 */
+        }
+
+        .nav-container {
+            background: var(--container-bg); border-radius: var(--container-radius);
+            box-shadow: var(--container-shadow); padding: 12px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.6); flex-shrink: 0;
+        }
+        .nav-title { font-size: 14px; color: var(--text-light); margin-bottom: 8px; padding-left: 5px; font-weight: bold; }
+
+        .user-bar-scroll, .chore-bar-scroll { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 5px; }
+        .user-bar-scroll::-webkit-scrollbar, .chore-bar-scroll::-webkit-scrollbar { display: none; }
+
+        .user-item, .chore-tab { cursor: pointer; transition: all 0.2s; position: relative; }
+        .user-item { display: flex; flex-direction: column; align-items: center; opacity: 0.5; transform: scale(0.9); flex-shrink: 0; }
+        .user-item.active { opacity: 1; transform: scale(1); }
+        .user-avatar {
+            width: 56px; height: 56px; font-size: 30px; background: #fff; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 3px solid transparent; transition: border-color 0.3s;
+        }
+        .user-item.active .user-avatar { border-color: var(--primary-color); background: var(--primary-light); }
+        .user-name { font-size: 12px; margin-top: 4px; font-weight: bold; text-align: center;}
+        
+        .chore-tab {
+            background: #fff; padding: 10px 16px; border-radius: 16px; font-size: 14px; white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03); display: flex; align-items: center; gap: 6px; color: var(--text-light); flex-shrink: 0;
+        }
+        .chore-tab.active {
+            background: var(--active-chore-bg); color: var(--active-chore-text);
+            box-shadow: 0 4px 12px rgba(0, 172, 193, 0.2); font-weight: 600; transform: translateY(-1px);
+        }
+
+        .delete-badge {
+            position: absolute; top: -5px; right: -5px; width: 22px; height: 22px;
+            background: var(--delete-btn-color); color: white; border-radius: 50%;
+            font-size: 14px; display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; cursor: pointer;
+        }
+        .add-btn-wrapper .delete-badge, .chore-add-btn .delete-badge { display: none; }
+        .add-btn-style { border: 3px dashed #ddd; color: #aaa; font-size: 24px; justify-content: center; display: flex; align-items: center;}
+        .chore-add-btn { padding: 10px 16px; border-radius: 16px; border: 2px dashed #ccc; color: #aaa; font-weight: bold; cursor: pointer; }
+
+        .calendar-container {
+            background: var(--container-bg); border-radius: var(--container-radius);
+            box-shadow: var(--container-shadow); padding: 15px 10px;
+            flex: 1; display: flex; flex-direction: column; backdrop-filter: blur(10px); overflow: hidden;
+            width: 100%; box-sizing: border-box; /* 確保不會超出容器 */
+        }
+        .month-control-header { display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 10px; color: var(--text-main); }
+        .month-btn { font-size: 24px; cursor: pointer; padding: 0 10px; color: var(--text-light); }
+        .month-label { font-size: 20px; font-weight: 800; min-width: 120px; text-align: center; }
+        
+        /* 強制週標題為 Grid */
+        .week-header {
+            display: grid; 
+            grid-template-columns: repeat(7, 1fr);
+            text-align: center; font-size: 13px; color: var(--text-light); margin-bottom: 5px;
+            width: 100%;
+        }
+        
+        .calendar-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr);
+            border-top: 1px solid var(--grid-border-color); border-left: 1px solid var(--grid-border-color);
+            background: rgba(255,255,255,0.3);
+            width: 100%;
+        }
+        .day-cell {
+            min-height: 80px; background: transparent; position: relative; 
+            border-right: 1px solid var(--grid-border-color); border-bottom: 1px solid var(--grid-border-color);
+            display: flex; flex-direction: column;
+        }
+        .day-num { position: absolute; top: 4px; left: 4px; z-index: 2; font-size: 11px; color: var(--text-light); font-weight: 800; pointer-events: none; }
+        .day-cell.today { background: rgba(255, 159, 159, 0.08); }
+        .day-cell.today .day-num { color: var(--primary-color); }
+
+        .single-target-area, .split-slot { flex: 1; width: 100%; display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative;}
+        .split-slot { border-bottom: 1px dashed rgba(0,0,0,0.05); }
+        .split-slot:last-child { border-bottom: none; }
+        .slot-label { position: absolute; right: 4px; bottom: 2px; font-size: 10px; color: rgba(0,0,0,0.1); font-weight: bold; pointer-events: none; }
+        .split-slot:first-child .slot-label { top: 4px; bottom: auto; }
+        .stamp-avatar { filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15)); animation: stampIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes stampIn { from { transform: scale(2) rotate(-15deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
+        .single-target-area .stamp-avatar { font-size: 42px; }
+        .split-slot .stamp-avatar { font-size: 28px; }
+        .locked-indicator { position: absolute; bottom: 2px; left: 2px; font-size: 10px; opacity: 0.5; pointer-events: none; }
+
+        .stats-grid { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 5px; }
+        .stat-item { display: flex; align-items: center; gap: 8px; background: #fff; padding: 8px 15px; border-radius: 30px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-shrink: 0; }
+        .stat-count { font-size: 18px; font-weight: bold; color: var(--text-main); }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(109, 90, 80, 0.5); display: none; justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(5px); }
+        .modal-card { background: #fff; padding: 30px 25px; border-radius: 28px; width: 85%; max-width: 320px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;}
+        input, select { padding: 12px; width: 100%; border: 2px solid #eee; box-sizing: border-box; border-radius: 12px; margin: 10px 0; text-align: center; font-size: 16px; color: var(--text-main); background: #fff;}
+        .icon-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+        .icon-option { font-size: 32px; padding: 8px; background: #f8f8f8; border-radius: 12px; cursor: pointer; border: 2px solid transparent; }
+        .icon-option.selected { border-color: var(--primary-color); background: var(--primary-light); }
+        .btn-group { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        button { padding: 12px 24px; border: none; border-radius: 16px; cursor: pointer; font-size: 16px; font-weight: bold; flex: 1; }
+        .btn-confirm { background: var(--primary-color); color: white; box-shadow: 0 4px 15px rgba(255, 159, 159, 0.4);}
+        .btn-cancel { background: #F0F0F0; color: var(--text-light); }
+        .radio-group { display: flex; gap: 10px; margin: 10px 0; }
+        .radio-option { flex: 1; padding: 10px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; color: var(--text-light); font-size: 14px;}
+        .radio-option.selected { border-color: var(--primary-color); background: var(--primary-light); color: var(--primary-color); font-weight: bold;}
+    </style>
+</head>
+<body>
+
+    <div class="app-root">
+
+        <div class="nav-container">
+            <div class="nav-title">誰在做家事？(長按改名)</div>
+            <div class="user-bar-scroll" id="userBar"></div>
+        </div>
+
+        <div class="nav-container">
+            <div class="nav-title">任務種類 (長按改名)</div>
+            <div class="chore-bar-scroll" id="choreBar"></div>
+        </div>
+
+        <div class="calendar-container">
+            <div class="month-control-header">
+                <div class="month-btn" onclick="window.changeMonth(-1)">&#8249;</div>
+                <div class="month-label" id="monthLabel"></div>
+                <div class="month-btn" onclick="window.changeMonth(1)">&#8250;</div>
+            </div>
+            <div class="week-header"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
+            <div class="calendar-grid" id="calendarGrid">
+                <div style="grid-column:1/-1; text-align:center; padding:50px; color:#aaa;">連線中...</div>
+            </div>
+        </div>
+
+        <div class="nav-container">
+            <div class="nav-title">本月戰績統計 🏆</div>
+            <div class="stats-grid" id="statsGrid"></div>
+        </div>
+
+    </div> <div class="modal-overlay" id="userModal">
+        <div class="modal-card">
+            <h3 id="userModalTitle">新增成員</h3>
+            <input type="text" id="userNameInput" placeholder="請輸入名字">
+            <div id="userPinSection"><input type="tel" id="userPinInput" placeholder="設定3位數密碼" maxlength="3"></div>
+            <div style="margin:15px 0 5px; color: var(--text-light); font-size: 14px;">選擇代表圖示：</div>
+            <div class="icon-grid" id="userIconGrid"></div>
+            <div class="btn-group">
+                <button class="btn-cancel" onclick="window.closeModal('userModal')">取消</button>
+                <button class="btn-confirm" onclick="window.confirmSaveUser()">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="choreModal">
+        <div class="modal-card">
+            <h3 id="choreModalTitle">新增任務</h3>
+            <input type="text" id="choreNameInput" placeholder="任務名稱">
+            <div class="radio-group" id="choreModeSelect">
+                <div class="radio-option selected" onclick="window.selectChoreMode('single')">單次模式</div>
+                <div class="radio-option" onclick="window.selectChoreMode('split')">午/晚 分割</div>
+            </div>
+            <div style="margin:15px 0 5px; color: var(--text-light); font-size: 14px;">選擇圖示：</div>
+            <div class="icon-grid" id="choreIconGrid"></div>
+            <div class="btn-group">
+                <button class="btn-cancel" onclick="window.closeModal('choreModal')">取消</button>
+                <button class="btn-confirm" onclick="window.confirmSaveChore()">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="pinModal">
+        <div class="modal-card">
+            <h3>🔒 安全驗證</h3>
+            <p id="pinPromptText" style="color: var(--text-light); margin-bottom: 20px;"></p>
+            <div style="font-size: 60px; margin-bottom: 15px;" id="pinAvatarDisplay"></div>
+            <input type="tel" id="verifyPin" placeholder="***" maxlength="3" style="letter-spacing: 8px; font-weight: bold;">
+            <div class="btn-group">
+                <button class="btn-cancel" onclick="window.closeModal('pinModal')">取消</button>
+                <button class="btn-confirm" onclick="window.submitPin()">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyAcKJkVt-tH0eDk-TSiM2qmkTgT8BAnetw",
+          authDomain: "house-choresv5.firebaseapp.com",
+          databaseURL: "https://house-choresv5-default-rtdb.firebaseio.com",
+          projectId: "house-choresv5",
+          storageBucket: "house-choresv5.firebasestorage.app",
+          messagingSenderId: "704445256144",
+          appId: "1:704445256144:web:b8ee2e150c07146a2869d5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let users = [];
+        let chores = [];
+        let records = {};
+        let currentUserId = null;
+        let currentChoreId = null;
+        let viewDate = new Date();
+
+        onValue(ref(db), (snapshot) => {
+            const data = snapshot.val() || {};
+            users = data.users ? Object.values(data.users) : [];
+            chores = data.chores ? Object.values(data.chores) : [];
+            records = data.records || {};
+
+            if(users.length > 0 && (!currentUserId || !users.find(u=>u.id===currentUserId))) {
+                currentUserId = users[0].id;
+            }
+            if(chores.length > 0 && (!currentChoreId || !chores.find(c=>c.id===currentChoreId))) {
+                currentChoreId = chores[0].id;
+            }
+            renderAll();
+        });
+
+        window.saveUserToCloud = (user) => { set(ref(db, 'users/' + user.id), user); };
+        window.deleteUserFromCloud = (userId) => {
+            remove(ref(db, 'users/' + userId));
+            Object.keys(records).forEach(cId => {
+                const dateMap = records[cId];
+                if(!dateMap) return;
+                Object.keys(dateMap).forEach(d => {
+                    const val = dateMap[d];
+                    if (typeof val === 'string' && val === userId) remove(ref(db, `records/${cId}/${d}`));
+                    else if (typeof val === 'object') {
+                        if (val[0] === userId) remove(ref(db, `records/${cId}/${d}/0`));
+                        if (val[1] === userId) remove(ref(db, `records/${cId}/${d}/1`));
+                    }
+                });
+            });
+        };
+        window.saveChoreToCloud = (chore) => { set(ref(db, 'chores/' + chore.id), chore); };
+        window.deleteChoreFromCloud = (choreId) => { remove(ref(db, 'chores/' + choreId)); remove(ref(db, 'records/' + choreId)); };
+        window.updateRecordInCloud = (choreId, dateStr, slotIndex, userId) => {
+            let path = `records/${choreId}/${dateStr}`;
+            if(slotIndex !== null) path += `/${slotIndex}`;
+            if(userId) set(ref(db, path), userId); else remove(ref(db, path));
+        };
+
+        function renderAll() { renderUsers(); renderChores(); renderCalendar(); }
+
+        const avatars = ["🐻", "🐰", "🐱", "🐶", "🦊", "🐼", "🐨", "🦁", "🐯", "🐷", "🐹", "🐸", "🐙", "🐤", "🦄", "🦖"];
+        const choreIcons = ["🗑️", "🍱", "🍽️", "👕", "👚", "🧹", "🧺", "🧽", "🚿", "🛒", "🍳", "🍼", "🪴", "🐕", "🔧", "💊"];
+        let tempIcon = "", tempMode = "single", pendingAction = null, editingId = null, pressTimer;
+
+        window.onload = () => { renderIconGrid('userIconGrid', avatars); renderIconGrid('choreIconGrid', choreIcons); };
+        window.changeMonth = (offset) => { viewDate.setMonth(viewDate.getMonth() + offset); renderCalendar(); };
+
+        function renderUsers() {
+            const bar = document.getElementById('userBar'); bar.innerHTML = '';
+            users.forEach(u => {
+                const div = document.createElement('div'); div.className = `user-item ${u.id === currentUserId ? 'active' : ''}`;
+                bindLongPress(div, () => window.openUserModal(u.id));
+                div.onclick = () => { currentUserId = u.id; renderUsers(); };
+                const delBtn = document.createElement('div'); delBtn.className = 'delete-badge'; delBtn.innerHTML = '×';
+                delBtn.onclick = (e) => { e.stopPropagation(); window.requestDeleteUser(u.id); };
+                div.innerHTML = `<div class="user-avatar">${u.icon}</div><div class="user-name">${u.name}</div>`;
+                div.appendChild(delBtn); bar.appendChild(div);
+            });
+            const addBtn = document.createElement('div'); addBtn.className = 'user-item add-btn-wrapper';
+            addBtn.onclick = () => window.openUserModal(null);
+            addBtn.innerHTML = `<div class="user-avatar add-btn-style">+</div><div class="user-name">新增</div>`;
+            bar.appendChild(addBtn);
+        }
+
+        function renderChores() {
+            const bar = document.getElementById('choreBar'); bar.innerHTML = '';
+            chores.forEach(c => {
+                const div = document.createElement('div'); div.className = `chore-tab ${c.id === currentChoreId ? 'active' : ''}`;
+                bindLongPress(div, () => window.openChoreModal(c.id));
+                div.onclick = () => { currentChoreId = c.id; renderChores(); renderCalendar(); };
+                const delBtn = document.createElement('div'); delBtn.className = 'delete-badge'; delBtn.innerHTML = '×';
+                delBtn.onclick = (e) => { e.stopPropagation(); window.confirmDeleteChore(c.id); };
+                div.innerHTML = `<span style="font-size:18px">${c.icon}</span><span>${c.name}</span>`;
+                div.appendChild(delBtn); bar.appendChild(div);
+            });
+            const addBtn = document.createElement('div'); addBtn.className = 'chore-add-btn'; addBtn.innerText = '+';
+            addBtn.onclick = () => window.openChoreModal(null); bar.appendChild(addBtn);
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
+            const year = viewDate.getFullYear(); const month = viewDate.getMonth();
+            document.getElementById('monthLabel').innerText = `${year}年 ${month + 1}月`;
+            const chore = chores.find(c => c.id === currentChoreId);
+            if(!chore) { grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:50px; color:#aaa;">請點擊上方 "+" 新增任務</div>'; renderStats(year, month); return; }
+            const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const todayStr = new Date().toLocaleDateString('zh-CA'); const rData = records[currentChoreId] || {};
+            for(let i=0; i<firstDay; i++) { const e = document.createElement('div'); e.className = 'day-cell'; e.style.border='none'; grid.appendChild(e); }
+            for(let d=1; d<=daysInMonth; d++) {
+                const dateStr = `${year}-${(month+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`;
+                const cell = document.createElement('div'); const isToday = dateStr === todayStr;
+                cell.className = `day-cell ${isToday ? 'today' : ''}`; cell.innerHTML = `<div class="day-num">${d}</div>`;
+                if (chore.mode === 'single') {
+                    const uid = rData[dateStr]; const area = document.createElement('div'); area.className = 'single-target-area';
+                    if(uid) { const u = users.find(x=>x.id===uid); if(u) area.innerHTML = `<div class="stamp-avatar">${u.icon}</div><div class="locked-indicator">🔒</div>`; }
+                    area.onclick = () => window.handleStamp(dateStr, null, uid); cell.appendChild(area);
+                } else {
+                    const dayObj = rData[dateStr] || {};
+                    cell.appendChild(createSlot(0, dayObj[0], dateStr, '午')); cell.appendChild(createSlot(1, dayObj[1], dateStr, '晚'));
+                }
+                grid.appendChild(cell);
+            }
+            renderStats(year, month);
+        }
+
+        function createSlot(idx, uid, dStr, label) {
+            const slot = document.createElement('div'); slot.className = 'split-slot';
+            slot.onclick = (e) => { e.stopPropagation(); window.handleStamp(dStr, idx, uid); };
+            slot.innerHTML = `<div class="slot-label">${label}</div>`;
+            if(uid) { const u = users.find(x=>x.id===uid); if(u) slot.innerHTML += `<div class="stamp-avatar">${u.icon}</div><div class="locked-indicator">🔒</div>`; }
+            return slot;
+        }
+
+        function renderStats(year, month) {
+            const div = document.getElementById('statsGrid'); div.innerHTML = ''; if(!chores.length) return;
+            const chore = chores.find(c=>c.id===currentChoreId); const rData = records[currentChoreId] || {};
+            const counts = {}; users.forEach(u => counts[u.id] = 0);
+            Object.keys(rData).forEach(d => {
+                if(new Date(d).getFullYear() === year && new Date(d).getMonth() === month) {
+                    const val = rData[d];
+                    if(chore.mode === 'single') { if(counts[val] !== undefined) counts[val]++; } 
+                    else { if(val[0] && counts[val[0]] !== undefined) counts[val[0]]++; if(val[1] && counts[val[1]] !== undefined) counts[val[1]]++; }
+                }
+            });
+            users.forEach(u => { if(counts[u.id] > 0) div.innerHTML += `<div class="stat-item"><div style="font-size:20px">${u.icon}</div><div class="stat-count">${counts[u.id]}</div></div>`; });
+            if(div.innerHTML === '') div.innerHTML = '<div style="padding:10px;color:#ccc">本月尚無紀錄</div>';
+        }
+
+        window.handleStamp = (dateStr, slotIndex, existingUid) => {
+            if(!users.length) return alert("請先新增成員");
+            if (!existingUid) { if(navigator.vibrate) navigator.vibrate(50); window.updateRecordInCloud(currentChoreId, dateStr, slotIndex, currentUserId); } 
+            else { const u = users.find(x => x.id === existingUid); if(!u) { window.updateRecordInCloud(currentChoreId, dateStr, slotIndex, null); return; } pendingAction = { type: 'deleteRecord', correctPin: u.pin, dateStr, slotIndex, choreId: currentChoreId }; window.openPinModal(u, "輸入密碼以移除紀錄："); }
+        };
+        window.openUserModal = (userId) => {
+            editingId = userId; const user = userId ? users.find(u=>u.id===userId) : null;
+            document.getElementById('userModalTitle').innerText = user ? "編輯成員 (改名)" : "新增成員";
+            document.getElementById('userNameInput').value = user ? user.name : "";
+            document.getElementById('userPinSection').style.display = user ? 'none' : 'block';
+            document.getElementById('userPinInput').value = ""; tempIcon = user ? user.icon : avatars[0];
+            renderIconGrid('userIconGrid', avatars); document.getElementById('userModal').style.display = 'flex';
+        };
+        window.confirmSaveUser = () => {
+            const name = document.getElementById('userNameInput').value.trim(); if(!name) return alert("請輸入名字");
+            if(editingId) { const u = users.find(x => x.id === editingId); window.saveUserToCloud({ ...u, name, icon: tempIcon }); } 
+            else { const pin = document.getElementById('userPinInput').value.trim(); if(!pin || pin.length !== 3) return alert("請設定3位數密碼"); const newId = 'u' + Date.now(); window.saveUserToCloud({ id: newId, name, icon: tempIcon, pin }); currentUserId = newId; } window.closeModal('userModal');
+        };
+        window.requestDeleteUser = (userId) => { const user = users.find(u=>u.id===userId); pendingAction = { type: 'deleteUser', correctPin: user.pin, userId }; window.openPinModal(user, `輸入 ${user.name} 的密碼以確認刪除：`); };
+        window.openChoreModal = (choreId) => {
+            editingId = choreId; const chore = choreId ? chores.find(c=>c.id===choreId) : null;
+            document.getElementById('choreModalTitle').innerText = chore ? "編輯任務" : "新增任務";
+            document.getElementById('choreNameInput').value = chore ? chore.name : "";
+            const modeDiv = document.getElementById('choreModeSelect'); if(chore) { modeDiv.style.display = 'none'; tempMode = chore.mode; } else { modeDiv.style.display = 'flex'; window.selectChoreMode('single'); }
+            tempIcon = chore ? chore.icon : choreIcons[0]; renderIconGrid('choreIconGrid', choreIcons); document.getElementById('choreModal').style.display = 'flex';
+        };
+        window.confirmSaveChore = () => {
+            const name = document.getElementById('choreNameInput').value.trim(); if(!name) return alert("請輸入名稱");
+            if(editingId) { const c = chores.find(x => x.id === editingId); window.saveChoreToCloud({ ...c, name, icon: tempIcon }); } else { const newId = 'c' + Date.now(); window.saveChoreToCloud({ id: newId, name, icon: tempIcon, mode: tempMode }); currentChoreId = newId; } window.closeModal('choreModal');
+        };
+        window.confirmDeleteChore = (choreId) => { const c = chores.find(x=>x.id===choreId); if(confirm(`確定要刪除「${c.name}」嗎？這會一併刪除此任務的所有歷史紀錄。`)) window.deleteChoreFromCloud(choreId); };
+        window.openPinModal = (user, msg) => { document.getElementById('pinPromptText').innerText = msg; document.getElementById('pinAvatarDisplay').innerText = user.icon; document.getElementById('verifyPin').value = ''; document.getElementById('pinModal').style.display = 'flex'; document.getElementById('verifyPin').focus(); };
+        window.submitPin = () => {
+            if(!pendingAction) return; const input = document.getElementById('verifyPin').value;
+            if(input === pendingAction.correctPin) { if(pendingAction.type === 'deleteRecord') window.updateRecordInCloud(pendingAction.choreId, pendingAction.dateStr, pendingAction.slotIndex, null); else if (pendingAction.type === 'deleteUser') window.deleteUserFromCloud(pendingAction.userId); window.closeModal('pinModal'); } else { alert("密碼錯誤"); document.getElementById('verifyPin').value = ''; }
+        };
+        window.selectChoreMode = (mode) => { tempMode = mode; const opts = document.querySelectorAll('#choreModeSelect .radio-option'); opts.forEach(o => o.classList.remove('selected')); if(mode === 'single') opts[0].classList.add('selected'); else opts[1].classList.add('selected'); };
+        window.closeModal = (id) => { document.getElementById(id).style.display = 'none'; pendingAction = null; };
+        function bindLongPress(element, callback) { const start = (e) => { pressTimer = setTimeout(() => { if(navigator.vibrate) navigator.vibrate(50); callback(); }, 800); }; const end = () => clearTimeout(pressTimer); element.addEventListener('mousedown', start); element.addEventListener('touchstart', start); element.addEventListener('mouseup', end); element.addEventListener('mouseleave', end); element.addEventListener('touchend', end); }
+        function renderIconGrid(divId, list) { const div = document.getElementById(divId); div.innerHTML = ''; list.forEach(ic => { const el = document.createElement('div'); el.className = `icon-option ${ic === tempIcon ? 'selected' : ''}`; el.innerText = ic; el.onclick = () => { tempIcon = ic; renderIconGrid(divId, list); }; div.appendChild(el); }); }
+    </script>
+</body>
+</html>
